@@ -775,11 +775,12 @@ func (client *Client) destroy(beingResumed bool) {
 			client.server.stats.ChangeOperators(-1)
 		}
 
+		if client.quitMessage == "" {
+			client.quitMessage = "Exited"
+		}
+		quitLine, _ := buildMsg(nil, client.NickMaskString(), "QUIT", client.quitMessage)
 		for friend := range friends {
-			if client.quitMessage == "" {
-				client.quitMessage = "Exited"
-			}
-			friend.Send(nil, client.nickMaskString, "QUIT", client.quitMessage)
+			friend.socket.Write(quitLine)
 		}
 	}
 	if !client.exitedSnomaskSent {
@@ -886,6 +887,17 @@ func (client *Client) SendRawMessage(message ircmsg.IrcMessage) error {
 	client.socket.Write(line)
 
 	return nil
+}
+
+func buildMsg(tags *map[string]ircmsg.TagValue, prefix string, command string, params ...string) (result []byte, err error) {
+	msg := ircmsg.MakeMessage(tags, prefix, command, params...)
+	line, err := msg.Line()
+	if err != nil {
+		log.Printf("message assembly error: %v\n", err.Error())
+		return
+	}
+	result = []byte(line)
+	return
 }
 
 // Send sends an IRC line to the client.

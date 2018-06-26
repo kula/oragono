@@ -425,21 +425,20 @@ func (channel *Channel) Join(client *Client, key string, isSajoin bool, rb *Resp
 	realname := client.Realname()
 	accountName := client.AccountName()
 	var modestr string
+	var modeLine []byte
 	if givenMode != 0 {
 		modestr = fmt.Sprintf("+%v", givenMode)
+		modeLine, _ = buildMsg(nil, client.server.name, "MODE", chname, modestr, nick)
 	}
 
+	joinLine, _ := buildMsg(nil, nickmask, "JOIN", chname)
 	for _, member := range channel.Members() {
 		if member == client {
 			continue
 		}
-		if member.capabilities.Has(caps.ExtendedJoin) {
-			member.Send(nil, nickmask, "JOIN", chname, accountName, realname)
-		} else {
-			member.Send(nil, nickmask, "JOIN", chname)
-		}
+		member.socket.Write(joinLine)
 		if givenMode != 0 {
-			member.Send(nil, client.server.name, "MODE", chname, modestr, nick)
+			member.socket.Write(modeLine)
 		}
 	}
 
@@ -472,8 +471,9 @@ func (channel *Channel) Part(client *Client, message string, rb *ResponseBuffer)
 	channel.Quit(client)
 
 	nickmask := client.NickMaskString()
+	partLine, _ := buildMsg(nil, nickmask, "PART", chname, message)
 	for _, member := range channel.Members() {
-		member.Send(nil, nickmask, "PART", chname, message)
+		member.socket.Write(partLine)
 	}
 	rb.Add(nil, nickmask, "PART", chname, message)
 
@@ -633,11 +633,6 @@ func (channel *Channel) sendSplitMessage(msgid, cmd string, minPrefix *modes.Mod
 		return
 	}
 
-	// for STATUSMSG
-	var minPrefixMode modes.Mode
-	if minPrefix != nil {
-		minPrefixMode = *minPrefix
-	}
 	// send echo-message
 	if client.capabilities.Has(caps.EchoMessage) {
 		var tagsToUse *map[string]ircmsg.TagValue
@@ -650,24 +645,10 @@ func (channel *Channel) sendSplitMessage(msgid, cmd string, minPrefix *modes.Mod
 			rb.AddSplitMessageFromClient(msgid, client, tagsToUse, cmd, channel.name, *message)
 		}
 	}
+	line, _ := buildMsg(nil, client.NickMaskString(), "PRIVMSG", channel.Name(), message.ForMaxLine)
 	for _, member := range channel.Members() {
-		if minPrefix != nil && !channel.ClientIsAtLeast(member, minPrefixMode) {
-			// STATUSMSG
-			continue
-		}
-		// echo-message is handled above, so skip sending the msg to the user themselves as well
-		if member == client {
-			continue
-		}
-		var tagsToUse *map[string]ircmsg.TagValue
-		if member.capabilities.Has(caps.MessageTags) {
-			tagsToUse = clientOnlyTags
-		}
-
-		if message == nil {
-			member.SendFromClient(msgid, client, tagsToUse, cmd, channel.name)
-		} else {
-			member.SendSplitMsgFromClient(msgid, client, tagsToUse, cmd, channel.name, *message)
+		if member != client {
+			member.socket.Write(line)
 		}
 	}
 }

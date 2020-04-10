@@ -82,6 +82,10 @@ func NewChannel(s *Server, name, casefoldedName string, registered bool) *Channe
 		channel.ensureLoaded.Do(func() {})
 	} // else: modes will be loaded before first join
 
+	s.logger.Info("channel", "new channel created, name", name,
+		"casefoldedName", casefoldedName,
+		"registered", fmt.Sprintf("%t", registered))
+
 	return channel
 }
 
